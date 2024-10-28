@@ -355,12 +355,16 @@ class Sequence:
         'Q': 'GLN', 'K': 'LYS', 'M': 'MET', 'G': 'GLY', 
         'P': 'PRO', 'Y': 'TYR', 'E': 'GLU', 'A': 'ALA', 
         'H': 'HIS', 'F': 'PHE', 'I': 'ILE', 'W': 'TRP'}
-        
+
+
         # if seq is a PDB file
         if seq.endswith(".pdb") or fmt == "pdb":
             # initiate MDAnalysis Universe of chain of seq, to easily extract three-letter residue codes
             if not seq.endswith(".pdb"): seq+=".pdb"
-            u = mda.Universe(seq).select_atoms(f"protein and chainid {chain}")
+            # Get chain name for first atom
+            uni = mda.Universe(seq)
+            chain = uni.atoms.chainIDs[0]
+            u = uni.select_atoms(f"protein and chainid {chain}")
             residues = u.residues.resnames
             residues = np.where((residues=="HIE") | (residues=="HID") | 
                                         (residues=="HIP"), "HIS", residues)

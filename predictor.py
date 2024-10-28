@@ -515,8 +515,8 @@ if __name__ == "__main__":
         pdb = sys.argv[-1]
         feats, feats_seq = density_prediction(pdb)
         pdb_name = pdb.split(".")[0]
-        feats.to_csv(f"{pdb_name}_structure_density_prediction_data.csv", index=False)
-        feats_seq.to_csv(f"{pdb_name}_sequence_density_prediction_data.csv", index=False)
+        feats.to_csv(f"../{pdb_name}_structure_density_prediction_data.csv", index=False)
+        feats_seq.to_csv(f"../{pdb_name}_sequence_density_prediction_data.csv", index=False)
 
     elif len(sys.argv) > 2:
         
@@ -536,5 +536,5 @@ if __name__ == "__main__":
                 all_feats_seq = pan.concat([all_feats_seq, feats_seq])
         
         directory = os.getcwd().split("/")[-1]
-        all_feats.to_csv(f"{directory}_structure_density_prediction_data.csv", index=False)
-        all_feats_seq.to_csv(f"{directory}_sequence_density_prediction_data.csv", index=False)
+        all_feats.to_csv(f"../{directory}_structure_density_prediction_data.csv", index=False)
+        all_feats_seq.to_csv(f"../{directory}_sequence_density_prediction_data.csv", index=False)

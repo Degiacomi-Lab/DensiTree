@@ -498,13 +498,13 @@ if __name__ == "__main__":
     
     # load Random Forest Regressors
     
-    with open("RF_300.pickle", "rb") as r_file:
+    with open("random_forests/RF_300.pickle", "rb") as r_file:
         RF_structure = pickle.load(r_file)
         
-    with open("RF_300_means.pickle", "rb") as r_file:
+    with open("random_forests/RF_300_means.pickle", "rb") as r_file:
         RF_structure_means = pickle.load(r_file)
     
-    with open("RF_300_seq.pickle", "rb") as r_file:
+    with open("random_forests/RF_300_seq.pickle", "rb") as r_file:
         RF_seq = pickle.load(r_file)
     
     if len(sys.argv) == 2:

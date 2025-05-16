@@ -45,6 +45,7 @@ class Sequence():
             if chain == "default":
                 u = mda.Universe(seq).select_atoms("protein")
                 chain = u.chainIDs[0]
+                print("Chain {chain} selected.")
             u = mda.Universe(seq).select_atoms(f"protein and chainid {chain}")
             residues = u.residues.resnames
             residues = np.where((residues=="HIE") | (residues=="HID") | 
@@ -368,10 +369,16 @@ class Structure():
         
         pdb = self.structure
         
-        u = mda.Universe(pdb)
+        #select chain of first protein molecule in PDB file
+        u = mda.Universe(pdb).select_atoms("protein")
+        chain = u.chainIDs[0]
+        print(f"Chain {chain} selected.")
+        u = mda.Universe(pdb).select_atoms(f"protein and chainid {chain}")
+
+        # run DSSP to get secondary structure
         dssp = DSSP(u).run().results.dssp[0]
 
-        
+        # Get secondary structure percents
         coil_percent = 100*sum(dssp=="C")/len(dssp)
         strand_percent = 100*sum(dssp=="E")/len(dssp)
         helix_percent = 100*sum(dssp=="H")/len(dssp)
@@ -565,5 +572,3 @@ class Structure():
         prediction = RF.predict(feats)[0]
         
         return prediction, feats
-           
-    

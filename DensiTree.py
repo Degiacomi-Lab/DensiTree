@@ -4,25 +4,142 @@
 # Imports
 import scipy.spatial.distance as dist
 import numpy as np
-import mdtraj as md
 import MDAnalysis as mda
+from MDAnalysis.analysis.dssp import DSSP
 import sys
 import scipy.spatial.distance as sdist
 import pandas as pan
 import pickle
 import os
-from sklearn.ensemble import RandomForestRegressor
+import pickle
 
-#%%
-class Protein():
-    def __init__(self, protein, keyword="sequence"):
-        self.keyword = keyword
-        if keyword == "sequence":
-            self.sequence = protein
-        elif keyword == "structure" or keyword == "both":
-            assert protein.endswith(".pdb"), "If 'structure' or 'both' are selected, a valid PDB file must be provided."
-            self.pdb = protein
+class Sequence():
+    def __init__(self, sequence, temp="300 K", chain="default"):
+        self.temp = temp
+        self.sequence = sequence
+        self.chain = chain
+        
+    def extract_residues(self, fmt = ""):
+        
+        chain = self.chain
+        #Argument:
+        #seq, str: either a list of one-letter residue codes, three-letter residue codes, or a PDB file, or a FASTA file.
+        #Return:
+        #residues, str: a list of three-letter residue codes
+        
+        seq = self.sequence
+        assert type(seq) is str, f"seq entry: \"{seq}\" is not valid.\nseq should be a string, either pointing to a PDB file, a fasta file, or a string of one-letter or three-letter amino acid residue codes."
+        
+        # define dictionary of one and three letter amino acid residue codes, required if seq is not a PDB file
+        all_residues_dict = {
+        'V': 'VAL', 'R': 'ARG', 'S': 'SER', 'L': 'LEU', 
+        'N': 'ASN', 'C': 'CYS', 'T': 'THR', 'D': 'ASP',
+        'Q': 'GLN', 'K': 'LYS', 'M': 'MET', 'G': 'GLY', 
+        'P': 'PRO', 'Y': 'TYR', 'E': 'GLU', 'A': 'ALA', 
+        'H': 'HIS', 'F': 'PHE', 'I': 'ILE', 'W': 'TRP'}
+        
+        # if seq is a PDB file
+        if seq.endswith(".pdb") or fmt == "pdb":
+            # initiate MDAnalysis Universe of chain of seq, to easily extract three-letter residue codes
+            if not seq.endswith(".pdb"): seq+=".pdb"
+            if chain == "default":
+                u = mda.Universe(seq).select_atoms("protein")
+                chain = u.chainIDs[0]
+                print("Chain {chain} selected.")
+            u = mda.Universe(seq).select_atoms(f"protein and chainid {chain}")
+            residues = u.residues.resnames
+            residues = np.where((residues=="HIE") | (residues=="HID") | 
+                                        (residues=="HIP"), "HIS", residues)
+            return residues
+        
+        # elif seq is a fasta file
+        elif seq.endswith(".fasta") or fmt == "fasta":
+            # get resnames in single letter code
+            residues_fasta = open(seq, "r").read().split("\n")[1]
+            # convert single letter code to three letter codes
+            residues = [all_residues_dict[res] for res in residues_fasta]
+            residues = np.where((residues=="HIE") | (residues=="HID") | 
+                                        (residues=="HIP"), "HIS", residues)
+            return residues
+        
+        # elif seq is a list of three-letter amino acid codes
+        elif fmt == "threeletter" or (((sum(list(map(lambda residue:residue in all_residues_dict.values(), [seq[i:i+3] for i in range(0,len(seq)-2, 3)])))) == len(seq)//3) and len(seq)%3 == 0):
+            residues =  [seq[i:i+3] for i in range(0,len(seq)-2, 3)]
+            residues = np.where((residues=="HIE") | (residues=="HID") | 
+                                        (residues=="HIP"), "HIS", residues)
+            return residues
+            
+        # else assume seq is a list of one-letter amino acid codes
+        elif fmt == "oneletter" or (sum(list(map(lambda residue:residue in all_residues_dict.keys(), seq))) == len(seq)):
+            residues = [all_residues_dict[res] for res in seq]
+            return residues
+        
+        else:
+            print(f"Incomprehensible seq string: {seq}")
+            return
+        
+    def amino_acid_composition(self):
+        #standard amino acid residues with HIS variations
+        all_residues = ['VAL','ARG','SER','LEU','ASN','CYS','THR','ASP','GLN',
+                    'LYS','MET','GLY','PRO','TYR','GLU','ALA','HIS', 
+                    'PHE','ILE','TRP']
+               
+        protein_resnames = self.extract_residues()
+        
+        #correct for HIS variants
+        protein_resnames = np.where((protein_resnames=="HIE") | (protein_resnames=="HID") | 
+                                    (protein_resnames=="HIP"), "HIS", protein_resnames)
 
+        amino_acid_composition = {res+" %":100*sum(protein_resnames==res)/len(protein_resnames) for res in all_residues}
+            
+        return amino_acid_composition
+    
+    def predict(self):
+        
+
+            
+        if self.temp == "310.15 K":
+            with open("random_forests/310.15K/RF_310_seq.pickle", "rb") as r_file:
+                RF = pickle.load(r_file)
+        elif self.temp == "300 K":
+            with open("random_forests/RF_300_seq.pickle", "rb") as r_file:
+                RF = pickle.load(r_file)
+            
+            
+        feats = pan.DataFrame(self.amino_acid_composition(), index=[0])
+        prediction = RF.predict(feats)[0]
+        
+        return prediction, feats
+        
+
+
+            
+        
+class Structure():
+    def __init__(self, structure, temp="300 K", important_features=False, chain="default"):
+        self.temp = temp
+        self.important_features = important_features
+        self.structure = structure
+        self.important_features_list = ['SER %',
+         'Acidic charged %',
+         'LYS %',
+         'Coil percent',
+         'Hydrophobic % interior',
+         'VAL %',
+         'Acidic charged % interior',
+         'Basic charged % surface',
+         'Basic charged %',
+         'LEU %',
+         'Hydrophobic %',
+         'PRO %',
+         'ASP %',
+         'Aliph. hydrophobic %',
+         'Net charge',
+         'Helix percent',
+         'Other %',
+         'Aliph. hydrophobic % interior',
+         'Acidic charged % surface',
+         'Other % interior']
         self.ATOMIC_RADII_ELEMENTS = {'H'   : 0.120, 'He'  : 0.140, 'Li'  : 0.076, 'Be' : 0.059,
                         'B'   : 0.192, 'C'   : 0.170, 'N'   : 0.155, 'O'  : 0.152,
                         'F'   : 0.147, 'Ne'  : 0.154, 'Na'  : 0.102, 'Mg' : 0.086,
@@ -99,9 +216,9 @@ class Protein():
         #Return:
         #residues, str: a list of three-letter residue codes
         
-        seq = self.sequence
-        assert type(seq) is str, f"seq entry: \"{seq}\" is not valid.\nseq should be a string, either pointing to a PDB file, a fasta file, or a string of one-letter or three-letter amino acid residue codes."
-        
+        structure = self.structure
+        chain = self.chain
+
         # define dictionary of one and three letter amino acid residue codes, required if seq is not a PDB file
         all_residues_dict = {
         'V': 'VAL', 'R': 'ARG', 'S': 'SER', 'L': 'LEU', 
@@ -110,45 +227,26 @@ class Protein():
         'P': 'PRO', 'Y': 'TYR', 'E': 'GLU', 'A': 'ALA', 
         'H': 'HIS', 'F': 'PHE', 'I': 'ILE', 'W': 'TRP'}
         
-        # if seq is a PDB file
-        if seq.endswith(".pdb") or fmt == "pdb":
+        # if structure is a PDB file
+        if structure.endswith(".pdb") or fmt == "pdb":
             # initiate MDAnalysis Universe of chain of seq, to easily extract three-letter residue codes
-            if not seq.endswith(".pdb"): seq+=".pdb"
-            u = mda.Universe(seq).select_atoms(f"protein and chainid {chain}")
+            if not structure.endswith(".pdb"): structure+=".pdb"
+            if chain == "default":
+                u = mda.Universe(structure).select_atoms("protein")
+                chain = u.chainIDs[0]
+            u = mda.Universe(structure).select_atoms(f"protein and chainid {chain}")
             residues = u.residues.resnames
             residues = np.where((residues=="HIE") | (residues=="HID") | 
                                         (residues=="HIP"), "HIS", residues)
             return residues
-        
-        # elif seq is a fasta file
-        elif seq.endswith(".fasta") or fmt == "fasta":
-            # get resnames in single letter code
-            residues_fasta = open(seq, "r").read().split("\n")[1]
-            # convert single letter code to three letter codes
-            residues = [all_residues_dict[res] for res in residues_fasta]
-            residues = np.where((residues=="HIE") | (residues=="HID") | 
-                                        (residues=="HIP"), "HIS", residues)
-            return residues
-        
-        # elif seq is a list of three-letter amino acid codes
-        elif fmt == "threeletter" or (((sum(list(map(lambda residue:residue in all_residues_dict.values(), [seq[i:i+3] for i in range(0,len(seq)-2, 3)])))) == len(seq)//3) and len(seq)%3 == 0):
-            residues =  [seq[i:i+3] for i in range(0,len(seq)-2, 3)]
-            residues = np.where((residues=="HIE") | (residues=="HID") | 
-                                        (residues=="HIP"), "HIS", residues)
-            return residues
-            
-        # else assume seq is a list of one-letter amino acid codes
-        elif fmt == "oneletter" or (sum(list(map(lambda residue:residue in all_residues_dict.keys(), seq))) == len(seq)):
-            residues = [all_residues_dict[res] for res in seq]
-            return residues
-        
+   
         else:
-            print("Incomprehensible seq string: {seq}")
+            print("Incomprehensible structure string: {structure}, should be a PDB file")
             return
         
     def est_ssbonds(self):
         tol = 0.05
-        u = mda.Universe(self.pdb)
+        u = mda.Universe(self.structure)
         protein = u.select_atoms("protein")
         residues =  protein.atoms
         atoms =  protein.atoms.names
@@ -161,7 +259,7 @@ class Protein():
     
 
     def aspect_ratio(self):
-        u = mda.Universe(self.pdb)
+        u = mda.Universe(self.structure)
         protein = u.select_atoms("protein")
         #e1,e2,e3 = protein.principal_axes()
         protein.align_principal_axis(0, [0,0,1])
@@ -207,7 +305,7 @@ class Protein():
         #selection_interior = "protein and not (" + " or".join(f" index {index}" for index in surface_atoms) + ")"
         
         #get protein structure file
-        pdb = self.pdb
+        pdb = self.structure
 
         #calculate amino acid residue composition of protein (percentages of each amino acid)
         protein_atoms = mda.Universe(pdb).select_atoms("protein").indices
@@ -256,7 +354,7 @@ class Protein():
         pos = ["ARG", "LYS", "HIP"]
         
         # get residue composition
-        pdb = self.pdb
+        pdb = self.structure
         protein_residues = mda.Universe(pdb).select_atoms("protein").residues.resnames
 
         # estimate total charge as sum of expected charges
@@ -268,10 +366,19 @@ class Protein():
         return {"Net charge": charge, "Mass": mass}
     
     def est_secondary_structure(self):
-        pdb = self.pdb
-        traj = md.load(pdb)
-        dssp = md.compute_dssp(traj)[0]
         
+        pdb = self.structure
+        
+        #select chain of first protein molecule in PDB file
+        u = mda.Universe(pdb).select_atoms("protein")
+        chain = u.chainIDs[0]
+        print(f"Chain {chain} selected.")
+        u = mda.Universe(pdb).select_atoms(f"protein and chainid {chain}")
+
+        # run DSSP to get secondary structure
+        dssp = DSSP(u).run().results.dssp[0]
+
+        # Get secondary structure percents
         coil_percent = 100*sum(dssp=="C")/len(dssp)
         strand_percent = 100*sum(dssp=="E")/len(dssp)
         helix_percent = 100*sum(dssp=="H")/len(dssp)
@@ -292,7 +399,7 @@ class Protein():
     #:returns: mesh numpy array containing the found points forming the accessible surface mesh
     #:returns: IDs of surface points
     
-        pdb = self.pdb
+        pdb = self.structure
         u = mda.Universe(pdb)
 
         protein = u.select_atoms("protein")
@@ -391,14 +498,15 @@ class Protein():
         return {"SASA": asa}, mesh_pts, surface_atoms, indices
 
     def radius_of_gyration(self):
-        pdb = self.pdb
+        pdb = self.structure
         Rg = mda.Universe(pdb).select_atoms("protein").radius_of_gyration()
         return {"Rg": Rg}
 
-    def featurize(self):
+    def featurize(self, important_features=False):
         
-        if self.keyword == "structure" or self.keyword == "both":
-
+        protein = self.structure
+        
+        if important_features==False:
             # create dictionary to store structure_feats 
             structure_feats = {}
             
@@ -412,75 +520,55 @@ class Protein():
             structure_feats.update(self.est_charge_mass())
             structure_feats.update(self.est_secondary_structure())
             structure_feats.update(self.radius_of_gyration())
-            
+    
             structure_feats = pan.DataFrame(structure_feats, index=[0])
             
-            if self.keyword =="structure":
-                return structure_feats
+        elif important_features==True:
+            # create dictionary to store structure_feats 
+            structure_feats_all = {}
+            
+            # Add feature structure_feats to dictionary for 20 most important features
+            asa, _, surface_atoms, _ = self.calc_sasa()
+            composition = self.amino_acid_composition(surface_atoms)
+            #structure_feats.update(composition)
+            charge_mass = self.est_charge_mass()
+            secondary_structure = self.est_secondary_structure()
+            
+            structure_feats_all.update(composition)
+            structure_feats_all.update(charge_mass)
+            structure_feats_all.update(secondary_structure)
+
+            important_features_list = self.important_features_list
+            
+            structure_feats_important = {k:structure_feats_all[k] for k in important_features_list}
+            
+            structure_feats = pan.DataFrame(structure_feats_important, index=[0])
         
-        elif self.keyword == "sequence" or self.keyword == "both":
-            
-            residues = self.extract_residues() # format ("fmt") and chain options
-            # 20 standard amino acid residues
-            all_residues = ['VAL','ARG','SER','LEU','ASN','CYS','THR','ASP','GLN',
-                        'LYS','MET','GLY','PRO','TYR','GLU','ALA','HIS','PHE','ILE','TRP']
-            
-            col_names = [res + " %" for res in all_residues]
-            
-            residues = np.array(residues)
-            
-            col_values = [100*(len(residues[residues==res]))/len(residues) for res in all_residues]
-                
-            # create dictionary of values
-            pdb_data = {col_name: col_value for (col_name, col_value) in zip(col_names, col_values)}
-            
-            # Add column values and column names from dictionary to a DataFrame
-            sequence_feats = pan.DataFrame(data = pdb_data, index = [0])
-            
-            if self.keyword == "sequence":
-                return sequence_feats
-            
-            elif self.keyword == "both":
-                return {"sequence_feats": sequence_feats, "structure_feats": structure_feats}
+        return structure_feats
+        
     
-    def predict(self, RF="default"):
+    def predict(self):
         
-        if RF != "default":
-            
-            assert type(RF) == RandomForestRegressor, "RF should be the string'default' or a Random Forest Regressor model from scikit-learn. Compatibility is maximised with scikit-learn version 1.5.2."
-            
-        if self.keyword == "sequence" or self.keyword == "both":
-            
-            if RF == "default":
-                with open("random_forests/RF_300_seq.pickle", "rb") as r_file:
-                    RF_seq = pickle.load(r_file)
-            
-            else:
-                RF_seq = RF
-            
-            feats_seq = self.featurize()
-            
-            prediction_seq = RF_seq.predict(feats_seq)[0]
-            
-            if self.keyword == "sequence":
-                return {"Sequence prediction": prediction_seq, 
-                        "Sequence feats": feats_seq}
+        important_features = self.important_features
         
-        elif self.keyword == "structure" or self.keyword == "both":
-            
-            if RF == "default":
-                with open("random_forests/RF_300.pickle", "rb") as r_file:
-                    RF_structure = pickle.load(r_file)
+        if self.temp == "310.15 K":
+            if important_features == True:
+                with open("random_forests/310.15K/RF_310_20.pickle", "rb") as r_file:
+                    RF = pickle.load(r_file)
             else:
-                RF_structure = RF
-            feats_structure = self.featurize()
+                with open("random_forests/310.15K/RF_310_all.pickle", "rb") as r_file:
+                    RF = pickle.load(r_file)
+
+        elif self.temp == "300 K":
+            if important_features == True:
+                with open("random_forests/RF_300_20.pickle", "rb") as r_file:
+                    RF = pickle.load(r_file)
+            else:
+                with open("random_forests/RF_300_all.pickle", "rb") as r_file:
+                    RF = pickle.load(r_file)
             
-            prediction_structure = RF_structure.predict(feats_structure)[0]
-            
-            if self.keyword == "structure":
-                return {"Structure prediction":prediction_structure,
-                        "Structure feats": feats_structure}
-            
-        return {"Sequence prediction": prediction_seq, "Structure prediction":prediction_structure,
-                "Sequence feats": feats_seq, "Structure feats": feats_structure}
-            
+        feats = self.featurize(important_features=important_features)
+        
+        prediction = RF.predict(feats)[0]
+        
+        return prediction, feats

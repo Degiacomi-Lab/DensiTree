@@ -45,7 +45,7 @@ class Sequence():
             if chain == "default":
                 u = mda.Universe(seq).select_atoms("protein")
                 chain = u.chainIDs[0]
-                print("Chain {chain} selected.")
+                print(f"Chain {chain} selected.")
             u = mda.Universe(seq).select_atoms(f"protein and chainid {chain}")
             residues = u.residues.resnames
             residues = np.where((residues=="HIE") | (residues=="HID") | 
